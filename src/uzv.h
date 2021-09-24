@@ -95,7 +95,8 @@ public:
            not level & not cover & blink ? show_sign(Sign::Level, Sign::Cover)
          : not level & blink             ? show_sign(Sign::Level, Sign::Space)
          : not cover & blink             ? show_sign(Sign::Cover, Sign::Space)
-         : show_sign(Sign::Space, Sign::Space);
+         : mode() == 0                   ? show_sign(Sign::Hyphen, Sign::Hyphen)
+         : show_temperature(temperature);
       } else if (state != emergency) {
          mode() == 0 ? show_sign(Sign::Hyphen, Sign::Hyphen)
                      : setting_temp ? show_set_temperature(flash.max_temperature)
