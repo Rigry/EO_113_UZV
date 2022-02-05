@@ -6,7 +6,7 @@
 #include "timers.h"
 #include "NTC_table.h"
 #include "literals.h"
-#include "seven_segment_indicator.h"
+#include "seven_segment_indicator_2.h"
 
 
 
@@ -83,7 +83,7 @@ public:
 
       if (setting_time) {
          show_set_time(flash.max_time);
-      } else if (state == State::wait) {
+      } else if (state == State::wait or state == State::preheating) {
          show_set_time(set_time);
       } else if (state == State::pause and blink) {
          show_sign(Sign::Space, Sign::Space, 0, 1);
@@ -92,10 +92,10 @@ public:
       }
 
       if (state == State::emergency or state == State::pause) {
-           not level & not cover & blink ? show_sign(Sign::Level, Sign::Cover)
-         : not level & blink             ? show_sign(Sign::Level, Sign::Space)
-         : not cover & blink             ? show_sign(Sign::Cover, Sign::Space)
-         : mode() == 0                   ? show_sign(Sign::Hyphen, Sign::Hyphen)
+           not level & not cover ? show_sign(Sign::Level, Sign::Cover)
+         : not level             ? show_sign(Sign::Level, Sign::Space)
+         : not cover             ? show_sign(Sign::Cover, Sign::Space)
+         : mode() == 0           ? show_sign(Sign::Hyphen, Sign::Hyphen)
          : show_temperature(temperature);
       } else if (state != emergency) {
          mode() == 0 ? show_sign(Sign::Hyphen, Sign::Hyphen)
@@ -142,23 +142,25 @@ public:
             state = State::wait;
          break;
          case wait:
+            heat = Heat::_1;
             if (on) {
                if (mode() == 2) {
                   state = State::preheating;
                } else {
                   state = State::pusk;
+                  timer.start(set_time * 60000);
                }
                flash.mode = mode();
                flash.temp = set_temperature;
                flash.time = set_time;
                left_time = set_time;
-               timer.start(set_time * 60000);
                deinit();
             }
          break;
          case preheating:
             if (heating()) {
                state = State::pusk;
+               timer.start(set_time * 60000);
             }
             if (not hold){
                state = State::init;
@@ -190,7 +192,10 @@ public:
                timer.start();
                init_start();
                state = State::pusk;
+            } else {
+               init_start();
             }
+
          break;
          case emergency:
             if (cover & level) state = State::init;
@@ -202,6 +207,7 @@ public:
 private:
 
    enum State {init, wait, preheating, pusk, pause, emergency} state{State::init};
+   enum Heat {_1, _2} heat{Heat::_1};
    
    ADC_& adc;
    Flash_data& flash;
@@ -246,6 +252,8 @@ private:
    bool blink{false};
    bool setting_temp{false};
    bool setting_time{false};
+
+   bool overheat{false};
 
    void temp (uint16_t adc) {
       adc = adc / conversion_on_channel;
@@ -364,7 +372,7 @@ private:
       );
 
       start.set_long_push_callback(
-         [&](){hold = false; on = false; timer.stop(); buzzer.longer();}
+         [&](){hold = false; on = false; timer.stop(); buzzer.longer(); overheat = false;}
       );
    }
 
@@ -481,13 +489,30 @@ private:
 
    bool heating() 
    {
-      if ((state == State::pusk or state == State::pause or state == State::preheating ) and mode() != 0) {
-         heater = temperature < (set_temperature) ? true : false;
-      } else {
-         heater = false;
+      switch (heat)
+      {
+         case _1:
+            if ((state == State::pusk or state == State::pause or state == State::preheating ) and mode() != 0) {
+               heater = temperature < (set_temperature) ? true : false;
+               heat = Heat::_2;
+            } else {
+               heater = false;
+            }
+         break;
+         case _2:
+            if (temperature >= set_temperature) {
+               heater = false;
+            } else if (temperature < (set_temperature - 1)) {
+               heater = true;
+            }
+         break;
       }
 
-      return temperature >= (set_temperature);
+      if (state == State::emergency) {
+         heater = false;
+      }
+      
+      return (not heater);
    }
 
 

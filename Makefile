@@ -110,7 +110,7 @@ clean:
 	-rm -fR .dep $(BUILD_DIR)
 
 flash:
-	st-flash write $(BUILD_DIR)/$(TARGET_F0).bin 0x8000000
+	st-flash --reset write $(BUILD_DIR)/$(TARGET_F0).bin 0x8000000
 
 util:
 	st-util
